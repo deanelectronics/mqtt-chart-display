@@ -73,6 +73,12 @@ function Dashboard() {
           <div className="flex items-center gap-2">
             <ConnectionStatus />
             <button
+              onClick={() => setShowCreds(true)}
+              className="border border-border bg-background px-3 py-2 font-mono text-xs uppercase text-muted-foreground hover:border-primary hover:text-primary"
+            >
+              Inloggning
+            </button>
+            <button
               onClick={() => {
                 if (confirm("Rensa all historik?")) clearAll();
               }}
