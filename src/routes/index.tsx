@@ -28,12 +28,24 @@ export const Route = createFileRoute("/")({
 
 function Dashboard() {
   const topics = useTopics();
+  const { authFailed } = useConnection();
   const [openTopic, setOpenTopic] = useState<string | null>(null);
+  const [showCreds, setShowCreds] = useState(false);
+  const autoOpenedRef = useRef(false);
   const [, force] = useState(0);
 
   useEffect(() => {
     startMqtt();
   }, []);
+
+  // Auto-open credentials dialog the first time auth fails
+  useEffect(() => {
+    if (authFailed && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      setShowCreds(true);
+    }
+    if (!authFailed) autoOpenedRef.current = false;
+  }, [authFailed]);
 
   // Tick every second so "X sedan" updates
   useEffect(() => {
