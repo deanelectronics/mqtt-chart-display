@@ -1,88 +1,43 @@
-# MQTT IoT Dashboard
+## Problem
 
-En ren client-side webapp som ansluter till en lokal Mosquitto-broker via WebSocket och visualiserar topics under `yrgo/iot/#` med liveuppdateringar och trendgrafer. Byggs som statiska filer som läggs i Apaches webroot på Pi:n.
+Logiken var rätt tänkt men dåligt formulerad: appen kör i webbläsaren (client-side), men MQTT-brokern kör på **servern** (Raspberry Pi:n som också serverar sidan via Apache). Eftersom användaren öppnar sidan via Pi:ns hostname/IP räcker det att återanvända `window.location.hostname` som broker-adress — vilket koden redan gör. Det som saknas är:
 
-## Funktionalitet
+1. Stöd för anonym anslutning som **default**, men med möjlighet att ange användarnamn/lösenord om Mosquitto kräver auth.
+2. Att UI:t automatiskt visar inloggningsfältet när anslutningen misslyckas pga auth-fel (MQTT CONNACK code 4 = "bad username or password", 5 = "not authorized").
 
-- Anslut automatiskt till `ws://<samma-host>:9001` vid sidladdning, visa connection status (ansluten / återansluter / fel)
-- Prenumerera på `yrgo/iot/#` och upptäck topics dynamiskt
-- Grid av "topic-kort", ett per upptäckt topic:
-  - Topic-namn
-  - Senaste numeriska värde (stort, tydligt)
-  - Tidsstämpel "senast uppdaterad"
-  - Sparkline med senaste ~60 datapunkter
-- Klick på kort → modal/expanderad vy med stor trendgraf
-  - Tidsfönster: 1 min / 5 min / 1 h / allt sparat
-  - Min/max/medel för valt fönster
-- Historik per topic sparas i **localStorage** (ring buffer, t.ex. 500 punkter/topic) — överlever F5
-- "Rensa historik"-knapp i UI
-- Hanterar enbart numeriska payloads (parsas som float; icke-numeriska ignoreras tyst eller markeras)
+## Plan
 
-## Design
+### 1. Credentials-state i `mqtt-client.ts`
+- Lägg till in-memory + `localStorage`-sparad `{ username, password }` (nyckel `yrgo-iot-credentials`). Sparas bara om användaren själv fyller i.
+- `startMqtt()` läser credentials från storage och skickar med i `mqtt.connect(url, { username, password, ... })` om de finns.
+- Lägg till exporterad `setCredentials(username, password)` som:
+  - sparar i localStorage
+  - stänger befintlig klient (`client.end(true)`)
+  - nollställer och anropar `startMqtt()` igen
+- Lägg till `clearCredentials()` för att glömma sparade uppgifter.
+- Utöka `useConnection()`-store så att `lastError` även exponerar en `authFailed: boolean` (sätts true när `error`-eventet innehåller "Not authorized" / "Bad user name or password", eller när broker stänger direkt efter connect-försök med credentials).
 
-Industrial-tema enligt vald palett:
-- Bakgrund `#1a1a1a`, kortyta `#2d2d2d`
-- Primär accent `#e85d3a` (värden, aktiva states, graflinjer)
-- Sekundär accent `#fbbf24` (varningar, sekundära datapunkter)
-- Mono-font för värden (JetBrains Mono), sans-serif för UI (Inter eller liknande)
-- Skarpa hörn, tydliga ramar, lätt industriell känsla — inte "SaaS-mjuk"
+### 2. Ny komponent `CredentialsDialog.tsx`
+- Enkel modal/panel i industrial-stil med fälten `Användarnamn` och `Lösenord` (type=password) + knappar `Anslut` och `Avbryt`.
+- Visas när:
+  - `authFailed === true`, ELLER
+  - användaren klickar på en ny liten knapp "Inloggning" i headern (för att kunna mata in i förväg eller byta uppgifter).
+- Vid `Anslut` → `setCredentials(...)`, stäng dialogen.
+- Inkluderar en "Glöm sparade uppgifter"-länk som anropar `clearCredentials()`.
 
-## Teknisk plan
+### 3. Headerjustering i `routes/index.tsx`
+- Lägg till "Inloggning"-knapp bredvid "Rensa".
+- Visa `CredentialsDialog` automatiskt första gången auth-fel detekteras.
 
-**Stack**
-- TanStack Start (befintligt scaffold) byggt som statisk SPA — inga server functions, inget Lovable Cloud
-- `mqtt` npm-paket (browser build, WebSocket-transport)
-- `uplot` för trendgrafer (snabb rendering av många punkter, lättviktig)
-- Tailwind v4 + design tokens i `src/styles.css`
+### 4. `ConnectionStatus.tsx`
+- Visa tydligare meddelande när `authFailed` är true: t.ex. "Auth krävs — klicka Inloggning".
 
-**Filstruktur (nytt)**
-```text
-src/
-  routes/
-    index.tsx              # Dashboard (grid + modal)
-  lib/
-    mqtt-client.ts         # Singleton MQTT-anslutning, auto-reconnect
-    topic-store.ts         # Reactive store: topics, värden, historik, localStorage-persistens
-  components/
-    ConnectionStatus.tsx
-    TopicCard.tsx          # Kort med värde + sparkline
-    TopicDetailModal.tsx   # Stor graf + tidsfönster-väljare
-    TrendChart.tsx         # uPlot-wrapper
-  styles.css               # Industrial-tokens
-```
+### 5. Uppdatera `DEPLOY.md`
+- Förtydliga att brokern körs **på samma maskin som Apache** (samma host som sidan laddas från), och att appen automatiskt använder den hostname/IP du surfade in på.
+- Lägg till kort avsnitt "Om brokern kräver lösenord": exempel på Mosquitto `password_file` + `allow_anonymous false`, och notis om att UI:t då frågar efter användarnamn/lösenord.
 
-**Anslutning**
-- `mqtt.connect("ws://" + window.location.hostname + ":9001")` — funkar oavsett om Pi:n nås via IP eller hostname
-- Auto-reconnect med exponentiell backoff
-- QoS 0 räcker för en dashboard
+## Vad som INTE ändras
 
-**Historik & persistens**
-- I minnet: `Map<topic, { values: Array<{t: number, v: number}> }>` (ring buffer 500 punkter)
-- Skrivs till localStorage debounced (t.ex. var 5:e sekund) under nyckeln `yrgo-iot-history`
-- Läses in vid app-start så grafen finns direkt
-- Total storlek ryms gott i 5MB-gränsen (500 punkter × ~30 byte × t.ex. 50 topics ≈ 750 kB)
-
-**Deployment på Pi**
-1. Bygg lokalt eller på Pi:n: `bun install && bun run build`
-2. Kopiera innehållet i `dist/` (eller motsvarande output-mapp) till `/var/www/html/`
-3. Konfigurera Mosquitto för WebSocket (se nedan)
-
-**Mosquitto-konfig som krävs på Pi:n** (instruktion i README, inte något appen gör):
-```text
-listener 1883
-listener 9001
-protocol websockets
-allow_anonymous true
-```
-Sen: `sudo systemctl restart mosquitto`
-
-## Saker som INTE ingår
-
-- Ingen autentisering, inga användare
-- Ingen publish från UI (read-only dashboard)
-- Ingen backend, ingen databas, ingen Lovable Cloud
-- Ingen långtidshistorik utöver vad localStorage rymmer
-
-## Leverans
-
-Efter implementation får du en kort README med exakta steg för Mosquitto-konfig och hur du kopierar bygget till `/var/www/html/`.
+- Fortfarande ren client-side, inget backend, inget Lovable Cloud.
+- Ingen separat broker-URL-input (host = sidans host är fortfarande regeln). Bara user/password kan justeras.
+- Lösenord sparas i `localStorage` i klartext — acceptabelt för en lokal lab-dashboard, men dokumenteras i DEPLOY.md.
