@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { startMqtt } from "@/lib/mqtt-client";
+import { useEffect, useRef, useState } from "react";
+import { startMqtt, useConnection } from "@/lib/mqtt-client";
 import { useTopics, clearAll } from "@/lib/topic-store";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { TopicCard } from "@/components/TopicCard";
 import { TopicDetailModal } from "@/components/TopicDetailModal";
+import { CredentialsDialog } from "@/components/CredentialsDialog";
 
 export const Route = createFileRoute("/")({
   head: () => ({
