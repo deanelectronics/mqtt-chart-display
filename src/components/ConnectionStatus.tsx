@@ -10,7 +10,7 @@ const LABELS: Record<string, string> = {
 };
 
 export function ConnectionStatus() {
-  const { status, lastError, brokerUrl } = useConnection();
+  const { status, lastError, brokerUrl, authFailed } = useConnection();
   const ok = status === "connected";
   const warn = status === "connecting" || status === "reconnecting";
   const dotClass = ok
@@ -28,9 +28,11 @@ export function ConnectionStatus() {
       {brokerUrl && (
         <span className="text-muted-foreground">{brokerUrl}</span>
       )}
-      {lastError && (
+      {authFailed ? (
+        <span className="text-destructive">· Auth krävs — klicka Inloggning</span>
+      ) : lastError ? (
         <span className="text-destructive">· {lastError}</span>
-      )}
+      ) : null}
     </div>
   );
 }
