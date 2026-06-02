@@ -118,6 +118,13 @@ function Dashboard() {
       {openData && (
         <TopicDetailModal data={openData} onClose={() => setOpenTopic(null)} />
       )}
+
+      {showCreds && (
+        <CredentialsDialog
+          authFailed={authFailed}
+          onClose={() => setShowCreds(false)}
+        />
+      )}
     </div>
   );
 }
