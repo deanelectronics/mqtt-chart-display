@@ -22,10 +22,10 @@ export function TrendChart({ points, height = 60, showAxes = false, color }: Pro
 
     const accent =
       color ??
-      getComputedStyle(document.documentElement)
+      (getComputedStyle(document.documentElement)
         .getPropertyValue("--primary")
         .trim() ||
-      "#e85d3a";
+        "#e85d3a");
     const muted =
       getComputedStyle(document.documentElement)
         .getPropertyValue("--muted-foreground")
