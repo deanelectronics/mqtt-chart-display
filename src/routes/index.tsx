@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { startMqtt } from "@/lib/mqtt-client";
+import { useEffect, useRef, useState } from "react";
+import { startMqtt, useConnection } from "@/lib/mqtt-client";
 import { useTopics, clearAll } from "@/lib/topic-store";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { TopicCard } from "@/components/TopicCard";
 import { TopicDetailModal } from "@/components/TopicDetailModal";
+import { CredentialsDialog } from "@/components/CredentialsDialog";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -27,12 +28,24 @@ export const Route = createFileRoute("/")({
 
 function Dashboard() {
   const topics = useTopics();
+  const { authFailed } = useConnection();
   const [openTopic, setOpenTopic] = useState<string | null>(null);
+  const [showCreds, setShowCreds] = useState(false);
+  const autoOpenedRef = useRef(false);
   const [, force] = useState(0);
 
   useEffect(() => {
     startMqtt();
   }, []);
+
+  // Auto-open credentials dialog the first time auth fails
+  useEffect(() => {
+    if (authFailed && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      setShowCreds(true);
+    }
+    if (!authFailed) autoOpenedRef.current = false;
+  }, [authFailed]);
 
   // Tick every second so "X sedan" updates
   useEffect(() => {
@@ -59,6 +72,12 @@ function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             <ConnectionStatus />
+            <button
+              onClick={() => setShowCreds(true)}
+              className="border border-border bg-background px-3 py-2 font-mono text-xs uppercase text-muted-foreground hover:border-primary hover:text-primary"
+            >
+              Inloggning
+            </button>
             <button
               onClick={() => {
                 if (confirm("Rensa all historik?")) clearAll();
@@ -98,6 +117,13 @@ function Dashboard() {
 
       {openData && (
         <TopicDetailModal data={openData} onClose={() => setOpenTopic(null)} />
+      )}
+
+      {showCreds && (
+        <CredentialsDialog
+          authFailed={authFailed}
+          onClose={() => setShowCreds(false)}
+        />
       )}
     </div>
   );
