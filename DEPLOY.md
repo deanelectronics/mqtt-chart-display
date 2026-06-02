@@ -2,6 +2,8 @@
 
 Helt client-side dashboard. Apache2 serverar statiska filer; webbläsaren kopplar upp sig direkt mot Mosquitto via WebSocket.
 
+**Hur appen hittar brokern:** Sidan använder automatiskt samma hostname/IP som du laddade sidan från. Om du surfar in på `http://pi.local/` ansluter den till `ws://pi.local:9001`; surfar du in via IP används den IP-adressen. Det förutsätter att Mosquitto kör på samma maskin som Apache.
+
 ## 1. Mosquitto med WebSocket
 
 Installera Mosquitto om det inte redan finns:
