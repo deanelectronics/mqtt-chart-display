@@ -4,14 +4,15 @@ Helt client-side dashboard. Apache2 serverar statiska filer; webbläsaren koppla
 
 **Hur appen hittar brokern:** Sidan använder automatiskt samma hostname/IP som du laddade sidan från. Om du surfar in på `http://pi.local/` ansluter den till `ws://pi.local:9001`; surfar du in via IP används den IP-adressen. Det förutsätter att Mosquitto kör på samma maskin som Apache.
 
+---
+
 ## 1. Mosquitto med WebSocket
 
-Installera Mosquitto om det inte redan finns:
 ```bash
 sudo apt update && sudo apt install -y mosquitto mosquitto-clients
 ```
 
-Lägg till en WebSocket-listener. Skapa/redigera `/etc/mosquitto/conf.d/websockets.conf`:
+Skapa/redigera `/etc/mosquitto/conf.d/websockets.conf`:
 ```
 listener 1883
 listener 9001
@@ -19,39 +20,73 @@ protocol websockets
 allow_anonymous true
 ```
 
-Starta om:
+Starta om och testa:
 ```bash
 sudo systemctl restart mosquitto
-sudo systemctl status mosquitto
-```
-
-Testa publish (i en annan terminal):
-```bash
 mosquitto_pub -h localhost -t yrgo/iot/sensor1/temp -m "23.4"
 ```
 
-## 2. Bygg appen
+---
 
-På valfri maskin med Bun (eller Node) installerat:
+## 2. Bygg appen som statiska filer
+
+> **Viktigt:** projektet använder TanStack Start som normalt bygger en server-bundle (Cloudflare Worker). För att kunna serva via Apache måste vi bygga med Nitros **static preset**, som producerar ren HTML + JS + CSS utan någon server.
+
+På din utvecklingsmaskin (eller direkt på Pi:n om du har Node/Bun där):
+
 ```bash
+# Installera bun om du inte har det
+curl -fsSL https://bun.sh/install | bash
+
+# Klona/kopiera projektet, gå in i mappen
+cd yrgo-iot-dashboard
+
 bun install
-bun run build
+
+# Bygg som statisk site
+NITRO_PRESET=static bun run build
 ```
 
-Outputmappen heter `dist/` (eller `.output/public/` beroende på TanStack Start-version — kolla efter bygget).
+Efter bygget hittar du de statiska filerna i:
+
+```
+.output/public/
+```
+
+Den mappen innehåller `index.html`, `assets/`, osv. **Det är den mappen som ska upp på Apache** — inte projektets rot.
+
+> Om du absolut inte vill bygga med static preset funkar det också att bygga vanligt (`bun run build`) och sedan ta filerna ur `.output/public/` — `index.html` skapas också där. Bygg först, kopiera sedan **bara `.output/public/`**.
+
+---
 
 ## 3. Lägg på Apache
 
+På Raspberry Pi:n:
+
 ```bash
 sudo rm -rf /var/www/html/*
-sudo cp -r dist/* /var/www/html/
+sudo cp -r .output/public/* /var/www/html/
 ```
 
-Öppna `http://<pi-ip>/` i en webbläsare. Sidan ansluter automatiskt till `ws://<pi-ip>:9001`.
+(Om du byggde på en annan maskin: `scp -r .output/public/* pi@<ip>:/tmp/site/` och sedan `sudo cp -r /tmp/site/* /var/www/html/` på Pi:n.)
+
+Kontrollera att `/var/www/html/index.html` finns:
+
+```bash
+ls /var/www/html/
+# Förväntat: index.html  assets/  ...
+```
+
+Öppna sedan `http://<pi-ip>/` i en webbläsare. Sidan ansluter automatiskt till `ws://<pi-ip>:9001`.
+
+### Vanligt fel: "Index of /"
+Om Apache visar en filkatalog med `package.json`, `src/`, `vite.config.ts` osv. — då har du kopierat **källkoden**, inte bygget. Kör steg 2 igen och kopiera `.output/public/`, inte projektets rot.
+
+---
 
 ## Om brokern kräver lösenord
 
-Med standardkonfigen ovan (`allow_anonymous true`) behövs inget login. Om du istället vill kräva autentisering:
+Med standardkonfigen ovan (`allow_anonymous true`) behövs inget login. För att kräva autentisering:
 
 ```
 listener 1883
@@ -67,12 +102,14 @@ sudo mosquitto_passwd -c /etc/mosquitto/passwd <användarnamn>
 sudo systemctl restart mosquitto
 ```
 
-När anslutningen då avvisas öppnar dashboarden automatiskt en inloggningsdialog där användarnamn/lösenord matas in. Du kan också öppna den manuellt via knappen **Inloggning** i headern. Uppgifterna sparas i webbläsarens `localStorage` (klartext) — använd bara på betrodda enheter, eller klicka "Glöm sparade" för att rensa.
+Dashboarden öppnar då automatiskt en inloggningsdialog. Uppgifterna sparas i `localStorage` (klartext).
+
+---
 
 ## Felsökning
 
-- **"Fel" / status röd:** kontrollera att port 9001 är öppen och att Mosquitto-loggen visar listener på 9001 (`sudo journalctl -u mosquitto -f`).
-- **"Auth krävs":** brokern kräver användarnamn/lösenord — klicka **Inloggning** i headern.
-- **Inga topics dyker upp:** dashboarden visar bara numeriska värden. Publicera ett tal: `mosquitto_pub -h localhost -t yrgo/iot/test -m 42`.
-- **Historiken försvinner inte mellan reloads** — den sparas i `localStorage` (max ~500 punkter per topic). Använd "Rensa"-knappen för att nollställa.
-
+- **Apache visar "Index of /":** du kopierade källkoden, inte `.output/public/`. Se steg 2–3.
+- **Status röd / "Fel":** port 9001 stängd eller Mosquitto inte konfigurerad för websockets. Kolla `sudo journalctl -u mosquitto -f`.
+- **"Auth krävs":** klicka **Inloggning** i headern.
+- **Inga topics dyker upp:** dashboarden visar bara numeriska värden. Testa `mosquitto_pub -h localhost -t yrgo/iot/test -m 42`.
+- **Historiken mellan reloads:** sparas i `localStorage` (max ~500 punkter per topic). Använd "Rensa".
