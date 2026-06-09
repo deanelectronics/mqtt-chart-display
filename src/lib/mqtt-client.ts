@@ -83,9 +83,9 @@ export async function startMqtt() {
     starting = false;
     return;
   }
-  starting = false;
 
   client.on("connect", () => {
+    starting = false;
     authFailed = false;
     setStatus("connected");
     client?.subscribe("yrgo/iot/#", { qos: 0 }, (err) => {
@@ -94,8 +94,12 @@ export async function startMqtt() {
   });
 
   client.on("reconnect", () => setStatus("reconnecting"));
-  client.on("offline", () => setStatus("offline"));
+  client.on("offline", () => {
+    starting = false;
+    setStatus("offline");
+  });
   client.on("error", (err) => {
+    starting = false;
     if (isAuthError(err.message)) {
       authFailed = true;
       // Stop the reconnect loop so we don't spam the broker with bad creds.
@@ -109,6 +113,7 @@ export async function startMqtt() {
     setStatus("error", err.message);
   });
   client.on("close", () => {
+    starting = false;
     if (status === "connected") setStatus("reconnecting");
   });
 
