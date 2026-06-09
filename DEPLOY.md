@@ -28,6 +28,33 @@ mosquitto_pub -h localhost -t yrgo/iot/sensor1/temp -m "23.4"
 
 ---
 
+## 2. Hämta färdigbyggda filer från GitHub (rekommenderat)
+
+GitHub Actions bygger automatiskt appen vid varje push till `main` och lägger de statiska filerna i branchen **`dist`**. Du behöver alltså aldrig installera bun/node på Pi:n.
+
+Första gången på Pi:n:
+```bash
+sudo rm -rf /var/www/html
+sudo git clone -b dist --single-branch https://github.com/<ditt-konto>/<repo>.git /var/www/html
+```
+
+Uppdatera senare (varje gång du pushat ändringar och Actions byggt klart):
+```bash
+cd /var/www/html
+sudo git fetch origin dist
+sudo git reset --hard origin/dist
+```
+
+Vill du automatisera, lägg det i en cron eller en liten systemd-timer.
+
+> Workflowen ligger i `.github/workflows/build-dist.yml`. Kolla att den blivit grön under fliken **Actions** på GitHub innan du pullar.
+
+---
+
+## 2b. (Alternativ) Bygg själv
+
+
+
 ## 2. Bygg appen som statiska filer
 
 > **Viktigt:** projektet använder TanStack Start som normalt bygger en server-bundle (Cloudflare Worker). För att kunna serva via Apache måste vi bygga med Nitros **static preset**, som producerar ren HTML + JS + CSS utan någon server.

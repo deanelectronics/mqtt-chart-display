@@ -1,0 +1,61 @@
+name: Build & publish dist branch
+
+# Bygger appen som statiska filer och pushar dem till branchen `dist`.
+# Då kan Raspberry Pi:n bara köra `git pull` i /var/www/html/ — utan att
+# bun, node eller bygg-verktyg behöver finnas på Pi:n.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build (static)
+        run: NITRO_PRESET=static bun run build
+
+      - name: Locate build output
+        id: out
+        run: |
+          if [ -d ".output/public" ]; then
+            echo "dir=.output/public" >> "$GITHUB_OUTPUT"
+          elif [ -d "dist" ]; then
+            echo "dir=dist" >> "$GITHUB_OUTPUT"
+          else
+            echo "Inget byggresultat hittades" && ls -la && exit 1
+          fi
+
+      - name: Publish to dist branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          SRC="${{ steps.out.outputs.dir }}"
+          TMP=$(mktemp -d)
+          cp -r "$SRC"/. "$TMP"/
+          # SPA-fallback för Apache: kopiera index.html till 404.html så
+          # deep-links inte ger 404 om man råkar surfa till en sub-path.
+          cp "$TMP/index.html" "$TMP/404.html" 2>/dev/null || true
+
+          cd "$TMP"
+          git init -b dist
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git add -A
+          git commit -m "build: ${GITHUB_SHA::7}"
+          git push --force origin dist
