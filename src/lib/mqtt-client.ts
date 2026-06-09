@@ -1,4 +1,4 @@
-import mqtt, { type MqttClient } from "mqtt";
+import type { MqttClient } from "mqtt";
 import { useSyncExternalStore } from "react";
 import { ingest, loadFromStorage } from "./topic-store";
 
@@ -15,6 +15,7 @@ const CREDS_KEY = "yrgo-iot-credentials";
 type Creds = { username: string; password: string } | null;
 
 let client: MqttClient | null = null;
+let starting = false;
 let status: ConnectionStatus = "idle";
 let lastError: string | null = null;
 let authFailed = false;
@@ -57,8 +58,9 @@ function loadCreds(): Creds {
   return null;
 }
 
-export function startMqtt() {
-  if (typeof window === "undefined" || client) return;
+export async function startMqtt() {
+  if (typeof window === "undefined" || client || starting) return;
+  starting = true;
   loadFromStorage();
   creds = loadCreds();
   const host = window.location.hostname || "localhost";
@@ -66,6 +68,9 @@ export function startMqtt() {
   authFailed = false;
   setStatus("connecting");
   try {
+    const mqttModule = await import("mqtt");
+    const mqtt = mqttModule.default ?? mqttModule;
+    if (client) return;
     client = mqtt.connect(brokerUrl, {
       reconnectPeriod: 3000,
       connectTimeout: 8000,
@@ -75,8 +80,10 @@ export function startMqtt() {
     });
   } catch (e) {
     setStatus("error", e instanceof Error ? e.message : String(e));
+    starting = false;
     return;
   }
+  starting = false;
 
   client.on("connect", () => {
     authFailed = false;
