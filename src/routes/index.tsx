@@ -8,6 +8,7 @@ import { TopicDetailModal } from "@/components/TopicDetailModal";
 import { CredentialsDialog } from "@/components/CredentialsDialog";
 
 export const Route = createFileRoute("/")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Yrgo IoT Dashboard" },
