@@ -25,8 +25,8 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Build
-        run: bun run build
+      - name: Build static Apache version
+        run: bunx vite build --config static.vite.config.ts
 
       - name: Generate static index.html
         run: node scripts/make-static-index.mjs
@@ -34,11 +34,11 @@ jobs:
       - name: Locate static client output
         id: out
         run: |
-          if [ -f "dist/client/index.html" ]; then
-            echo "dir=dist/client" >> "$GITHUB_OUTPUT"
+          if [ -f "dist-static/index.html" ]; then
+            echo "dir=dist-static" >> "$GITHUB_OUTPUT"
           else
-            echo "dist/client/index.html saknas"
-            ls -la dist/client 2>/dev/null || true
+            echo "dist-static/index.html saknas"
+            ls -la dist-static 2>/dev/null || true
             exit 1
           fi
 
