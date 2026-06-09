@@ -27,7 +27,7 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-function Dashboard() {
+export function Dashboard() {
   const topics = useTopics();
   const { authFailed } = useConnection();
   const [openTopic, setOpenTopic] = useState<string | null>(null);

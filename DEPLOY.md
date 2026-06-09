@@ -53,11 +53,7 @@ Vill du automatisera, lägg det i en cron eller en liten systemd-timer.
 
 ## 2b. (Alternativ) Bygg själv
 
-
-
-## 2. Bygg appen som statiska filer
-
-> **Viktigt:** projektet använder TanStack Start som normalt bygger en server-bundle (Cloudflare Worker). För att kunna serva via Apache måste vi bygga med Nitros **static preset**, som producerar ren HTML + JS + CSS utan någon server.
+> **Viktigt:** GitHub-workflowen bygger en ren Vite/React-version för Apache. Den vanliga TanStack Start-builden innehåller serverdelar och ska inte kopieras till `/var/www/html`.
 
 På din utvecklingsmaskin (eller direkt på Pi:n om du har Node/Bun där):
 
@@ -70,19 +66,18 @@ cd yrgo-iot-dashboard
 
 bun install
 
-# Bygg som statisk site
-NITRO_PRESET=static bun run build
+# Bygg som statisk Apache-site
+bunx vite build --config static.vite.config.ts
+node scripts/make-static-index.mjs
 ```
 
 Efter bygget hittar du de statiska filerna i:
 
 ```
-.output/public/
+dist-static/
 ```
 
-Den mappen innehåller `index.html`, `assets/`, osv. **Det är den mappen som ska upp på Apache** — inte projektets rot.
-
-> Om du absolut inte vill bygga med static preset funkar det också att bygga vanligt (`bun run build`) och sedan ta filerna ur `.output/public/` — `index.html` skapas också där. Bygg först, kopiera sedan **bara `.output/public/`**.
+Den mappen innehåller `index.html`, `404.html`, `assets/`, osv. **Det är den mappen som ska upp på Apache** — inte projektets rot.
 
 ---
 
@@ -92,10 +87,10 @@ På Raspberry Pi:n:
 
 ```bash
 sudo rm -rf /var/www/html/*
-sudo cp -r .output/public/* /var/www/html/
+sudo cp -r dist-static/* /var/www/html/
 ```
 
-(Om du byggde på en annan maskin: `scp -r .output/public/* pi@<ip>:/tmp/site/` och sedan `sudo cp -r /tmp/site/* /var/www/html/` på Pi:n.)
+(Om du byggde på en annan maskin: `scp -r dist-static/* pi@<ip>:/tmp/site/` och sedan `sudo cp -r /tmp/site/* /var/www/html/` på Pi:n.)
 
 Kontrollera att `/var/www/html/index.html` finns:
 
@@ -107,7 +102,7 @@ ls /var/www/html/
 Öppna sedan `http://<pi-ip>/` i en webbläsare. Sidan ansluter automatiskt till `ws://<pi-ip>:9001`.
 
 ### Vanligt fel: "Index of /"
-Om Apache visar en filkatalog med `package.json`, `src/`, `vite.config.ts` osv. — då har du kopierat **källkoden**, inte bygget. Kör steg 2 igen och kopiera `.output/public/`, inte projektets rot.
+Om Apache visar en filkatalog med `package.json`, `src/`, `vite.config.ts` osv. — då har du kopierat **källkoden**, inte bygget. Kör steg 2 igen och kopiera `dist-static/`, inte projektets rot.
 
 ---
 
@@ -135,7 +130,7 @@ Dashboarden öppnar då automatiskt en inloggningsdialog. Uppgifterna sparas i `
 
 ## Felsökning
 
-- **Apache visar "Index of /":** du kopierade källkoden, inte `.output/public/`. Se steg 2–3.
+- **Apache visar "Index of /":** du kopierade källkoden, inte `dist-static/`. Se steg 2–3.
 - **Status röd / "Fel":** port 9001 stängd eller Mosquitto inte konfigurerad för websockets. Kolla `sudo journalctl -u mosquitto -f`.
 - **"Auth krävs":** klicka **Inloggning** i headern.
 - **Inga topics dyker upp:** dashboarden visar bara numeriska värden. Testa `mosquitto_pub -h localhost -t yrgo/iot/test -m 42`.
