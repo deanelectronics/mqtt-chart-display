@@ -28,16 +28,21 @@ jobs:
       - name: Build (static)
         run: NITRO_PRESET=static bun run build
 
-      - name: Locate build output
+      - name: Locate static client output
         id: out
         run: |
-          if [ -d ".output/public" ]; then
-            echo "dir=.output/public" >> "$GITHUB_OUTPUT"
-          elif [ -d "dist" ]; then
-            echo "dir=dist" >> "$GITHUB_OUTPUT"
-          else
-            echo "Inget byggresultat hittades" && ls -la && exit 1
-          fi
+          # TanStack Start lägger client-bundlen i en av dessa mappar
+          for d in dist/client .output/public dist .output/client; do
+            if [ -f "$d/index.html" ]; then
+              echo "Hittade index.html i $d"
+              echo "dir=$d" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "Hittade ingen index.html i någon känd output-mapp"
+          ls -la dist .output 2>/dev/null || true
+          exit 1
+
 
       - name: Publish to dist branch
         env:
