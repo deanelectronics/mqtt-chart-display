@@ -1,4 +1,4 @@
-import mqtt, { type MqttClient } from "mqtt";
+import type { MqttClient } from "mqtt";
 import { useSyncExternalStore } from "react";
 import { ingest, loadFromStorage } from "./topic-store";
 
@@ -13,14 +13,27 @@ export type ConnectionStatus =
 const CREDS_KEY = "yrgo-iot-credentials";
 
 type Creds = { username: string; password: string } | null;
+type ConnectionSnapshot = {
+  status: ConnectionStatus;
+  lastError: string | null;
+  brokerUrl: string | null;
+  authFailed: boolean;
+};
 
 let client: MqttClient | null = null;
+let starting = false;
 let status: ConnectionStatus = "idle";
 let lastError: string | null = null;
 let authFailed = false;
 let brokerUrl: string | null = null;
 let creds: Creds = null;
 const listeners = new Set<() => void>();
+let connectionSnapshot: ConnectionSnapshot = {
+  status,
+  lastError,
+  brokerUrl,
+  authFailed,
+};
 
 function emit() {
   for (const l of listeners) l();
@@ -29,6 +42,7 @@ function emit() {
 function setStatus(s: ConnectionStatus, err: string | null = null) {
   status = s;
   lastError = err;
+  connectionSnapshot = { status, lastError, brokerUrl, authFailed };
   emit();
 }
 
@@ -57,8 +71,9 @@ function loadCreds(): Creds {
   return null;
 }
 
-export function startMqtt() {
-  if (typeof window === "undefined" || client) return;
+export async function startMqtt() {
+  if (typeof window === "undefined" || client || starting) return;
+  starting = true;
   loadFromStorage();
   creds = loadCreds();
   const host = window.location.hostname || "localhost";
@@ -66,6 +81,9 @@ export function startMqtt() {
   authFailed = false;
   setStatus("connecting");
   try {
+    const mqttModule = await import("mqtt");
+    const mqtt = mqttModule.default ?? mqttModule;
+    if (client) return;
     client = mqtt.connect(brokerUrl, {
       reconnectPeriod: 3000,
       connectTimeout: 8000,
@@ -75,10 +93,12 @@ export function startMqtt() {
     });
   } catch (e) {
     setStatus("error", e instanceof Error ? e.message : String(e));
+    starting = false;
     return;
   }
 
   client.on("connect", () => {
+    starting = false;
     authFailed = false;
     setStatus("connected");
     client?.subscribe("yrgo/iot/#", { qos: 0 }, (err) => {
@@ -87,8 +107,12 @@ export function startMqtt() {
   });
 
   client.on("reconnect", () => setStatus("reconnecting"));
-  client.on("offline", () => setStatus("offline"));
+  client.on("offline", () => {
+    starting = false;
+    setStatus("offline");
+  });
   client.on("error", (err) => {
+    starting = false;
     if (isAuthError(err.message)) {
       authFailed = true;
       // Stop the reconnect loop so we don't spam the broker with bad creds.
@@ -102,6 +126,7 @@ export function startMqtt() {
     setStatus("error", err.message);
   });
   client.on("close", () => {
+    starting = false;
     if (status === "connected") setStatus("reconnecting");
   });
 
@@ -158,7 +183,7 @@ function subscribe(cb: () => void) {
 }
 
 function getConn() {
-  return { status, lastError, brokerUrl, authFailed };
+  return connectionSnapshot;
 }
 
 const SERVER_SNAPSHOT = {
