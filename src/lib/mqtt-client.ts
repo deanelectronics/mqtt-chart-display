@@ -13,6 +13,12 @@ export type ConnectionStatus =
 const CREDS_KEY = "yrgo-iot-credentials";
 
 type Creds = { username: string; password: string } | null;
+type ConnectionSnapshot = {
+  status: ConnectionStatus;
+  lastError: string | null;
+  brokerUrl: string | null;
+  authFailed: boolean;
+};
 
 let client: MqttClient | null = null;
 let starting = false;
@@ -22,6 +28,12 @@ let authFailed = false;
 let brokerUrl: string | null = null;
 let creds: Creds = null;
 const listeners = new Set<() => void>();
+let connectionSnapshot: ConnectionSnapshot = {
+  status,
+  lastError,
+  brokerUrl,
+  authFailed,
+};
 
 function emit() {
   for (const l of listeners) l();
@@ -30,6 +42,7 @@ function emit() {
 function setStatus(s: ConnectionStatus, err: string | null = null) {
   status = s;
   lastError = err;
+  connectionSnapshot = { status, lastError, brokerUrl, authFailed };
   emit();
 }
 
@@ -170,7 +183,7 @@ function subscribe(cb: () => void) {
 }
 
 function getConn() {
-  return { status, lastError, brokerUrl, authFailed };
+  return connectionSnapshot;
 }
 
 const SERVER_SNAPSHOT = {
