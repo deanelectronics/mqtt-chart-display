@@ -7,6 +7,11 @@ import { join } from "node:path";
 
 const CLIENT = "dist-static";
 const INDEX = join(CLIENT, "index.html");
+const STATIC_HTML = join(CLIENT, "static.html");
+
+if (!existsSync(INDEX) && existsSync(STATIC_HTML)) {
+  copyFileSync(STATIC_HTML, INDEX);
+}
 
 if (!existsSync(INDEX)) {
   console.error(`[make-static-index] ${INDEX} saknas — kör static-builden först`);
